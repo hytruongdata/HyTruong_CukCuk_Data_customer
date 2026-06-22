@@ -4,19 +4,19 @@ on:
     - cron: '0 1,6 * * *'  # Chạy vào 8h sáng (01 UTC) và 1h chiều (06 UTC) theo giờ Việt Nam (GMT+7)
   workflow_dispatch:  # Cho phép chạy thủ công
 
-# CẤP QUYỀN GHI: Bắt buộc phải có để GitHub Actions có quyền push ngược file Excel lên repo
 permissions:
   contents: write
 
 jobs:
   crawl-and-update:
-    runs-on: ubuntu-latest
+    # ĐỔI THÀNH UBUNTU-22.04 ĐỂ TRÁNH LỖI THIẾU THƯ VIỆN HỆ THỐNG
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT }}  # Đảm bảo PAT của bạn có quyền 'repo' hoặc 'contents: write'
+          token: ${{ secrets.PAT }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -32,12 +32,10 @@ jobs:
 
       - name: Create Result Folders
         run: |
-          # Ép máy ảo tạo sẵn thư mục chứa data cũ và mới để tránh lỗi hệ thống tập tin
           mkdir -p result/infocom_data
           mkdir -p result/infocom_datanew
 
       - name: Run crawler
-        # Giữ nguyên tên file chạy như bạn yêu cầu
         run: python crawl_datacustomer.py
 
       - name: Set up Git
@@ -47,14 +45,12 @@ jobs:
 
       - name: Sync with GitHub Remote
         run: |
-          # Kéo thư mục dữ liệu cũ 1 năm qua về máy ảo trước để không bị lệch pha/mất file cũ
           git fetch origin master
           git checkout origin/master -- result/infocom_data/ || echo "Chưa có dữ liệu cũ"
           git pull origin master --no-rebase
 
       - name: Commit and Push changes
         run: |
-          # Thêm toàn bộ các thay đổi trong folder result (bao gồm folder infocom_datanew mới sinh ra)
           git add result/
           if ! git diff --cached --quiet; then
             git commit -m "GitHub Actions: Tự động cập nhật dataset cào mới vào infocom_datanew [skip ci]"
