@@ -4,6 +4,10 @@ on:
     - cron: '0 1,6 * * *'  # Chạy vào 8h sáng (01 UTC) và 1h chiều (06 UTC) theo giờ Việt Nam (GMT+7)
   workflow_dispatch:  # Cho phép chạy thủ công
 
+# CẤP QUYỀN GHI: Bắt buộc phải có để GitHub Actions có quyền push ngược file Excel lên repo
+permissions:
+  contents: write
+
 jobs:
   crawl-and-update:
     runs-on: ubuntu-latest
@@ -12,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT }}  # Dùng Personal Access Token để có quyền push
+          token: ${{ secrets.PAT }}  # Đảm bảo PAT của bạn có quyền 'repo' hoặc 'contents: write'
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -24,8 +28,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           playwright install chromium
+          playwright install-deps
+
+      - name: Create Result Folders
+        run: |
+          # Ép máy ảo tạo sẵn thư mục chứa data cũ và mới để tránh lỗi hệ thống tập tin
+          mkdir -p result/infocom_data
+          mkdir -p result/infocom_datanew
 
       - name: Run crawler
+        # Giữ nguyên tên file chạy như bạn yêu cầu
         run: python crawl_datacustomer.py
 
       - name: Set up Git
@@ -33,19 +45,20 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Stash changes before pull
+      - name: Sync with GitHub Remote
         run: |
-          git add .
-          git stash --include-untracked  # Lưu tạm thay đổi để tránh xung đột
-          git pull origin master --rebase
-          git stash pop || echo "No stashed changes to apply"  # Khôi phục nếu có thay đổi
+          # Kéo thư mục dữ liệu cũ 1 năm qua về máy ảo trước để không bị lệch pha/mất file cũ
+          git fetch origin master
+          git checkout origin/master -- result/infocom_data/ || echo "Chưa có dữ liệu cũ"
+          git pull origin master --no-rebase
 
       - name: Commit and Push changes
         run: |
-          git add .
+          # Thêm toàn bộ các thay đổi trong folder result (bao gồm folder infocom_datanew mới sinh ra)
+          git add result/
           if ! git diff --cached --quiet; then
-            git commit -m "Update customer data [skip ci]"
+            git commit -m "GitHub Actions: Tự động cập nhật dataset cào mới vào infocom_datanew [skip ci]"
             git push origin master
           else
-            echo "No changes to commit"
+            echo "Không tìm thấy file Excel mới nào được sinh ra trong folder result/infocom_datanew!"
           fi
